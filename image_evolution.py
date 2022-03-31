@@ -1,12 +1,8 @@
-#!/usr/bin/env python3
-"""
-Genetic algorithm implemented with Evol solving the one max problem
-(maximising number of 1s in a binary number).
-
-"""
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
+from configparser import ConfigParser
 import random
+import sys
 
 TARGET = Image.open("images/darwin.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
@@ -61,14 +57,30 @@ def mutate(x, rate):
     return x
 
 
-population = Population.generate(initialize, evaluate, size=3, maximize=True)
-population.evaluate()
+def run(pop_size, maximize, survival_rate, mutation_rate, seed):
+    random.seed(seed)
+    population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
+    population.evaluate()
 
-evolution = (Evolution().survive(fraction=0.5)
-             .breed(parent_picker=select, combiner=combine)
-             .mutate(mutate_function=mutate, rate=0.5)
-             .evaluate())
+    evolution = (Evolution().survive(fraction=float(survival_rate))
+                 .breed(parent_picker=select, combiner=combine)
+                 .mutate(mutate_function=mutate, rate=float(mutation_rate))
+                 .evaluate())
 
-for i in range(50):
-    population = population.evolve(evolution)
-    print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness)
+    for i in range(50):
+        population = population.evolve(evolution)
+        print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness)
+
+
+def read_config(path):
+    config = ConfigParser()
+    config.read(path)
+
+    values = {section: dict(config.items(section)) for section in config.sections()}
+
+    return values
+
+
+if __name__ == "__main__":
+    params = read_config(sys.argv[1])
+    run(**params[sys.argv[2]])
