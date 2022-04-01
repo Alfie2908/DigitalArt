@@ -100,6 +100,11 @@ def combine(*parents):
 def mutate(x, rate):
     for polygon in x:
         if random.random() < rate:
+            colour = polygon[0]
+            polygon[0] = (random.randint(colour[0] - 10, colour[0] + 10)
+                          , random.randint(colour[1] - 10, colour[1] + 10)
+                          , random.randint(colour[2] - 10, colour[2] + 10)
+                          , random.randint(colour[3] - 10, colour[3] + 10))
             for i in range(1, len(polygon)):
                 vertex = polygon[i]
                 polygon[i] = (random.randint(vertex[0] - 10, vertex[0] + 10)
