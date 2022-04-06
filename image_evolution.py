@@ -1,3 +1,5 @@
+from datetime import date
+
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
 from configparser import ConfigParser
@@ -30,7 +32,12 @@ def get_angle(point1, point2):
     elif point1 == point2:
         return 0
 
-    return math.atan(point2[0] - point1[0]) / (point2[1] - point1[1])
+    theta = math.atan2((point2[0] - point1[0]), (point2[1] - point1[1]))
+
+    if theta < 0:
+        return theta + (2 * math.pi)
+    else:
+        return theta
 
 
 def dual_insertion_sort(list1, list2):
@@ -39,7 +46,7 @@ def dual_insertion_sort(list1, list2):
         item = list2[i + 1]
         j = i - 1
 
-        while j > 0 and list1[j] > key:
+        while j >= 0 and list1[j] > key:
             list1[j + 1] = list1[j]
             list2[j + 2] = list2[j + 1]
             j = j - 1
@@ -55,6 +62,14 @@ def order_vertices(polygon):
         angles.append(get_angle(centre, polygon[i]))
 
     dual_insertion_sort(angles, polygon)
+
+
+def random_int(global_min, global_max, local_min, local_max):
+    num = -1000000
+    while num < global_min or num > global_max:
+        num = random.randint(local_min, local_max)
+
+    return num
 
 
 def make_polygon(vertices):
@@ -73,12 +88,11 @@ def draw(solution):
     for polygon in solution:
         canvas.polygon(polygon[1:], fill=polygon[0])
 
-    image.save("images/solution.png")
     return image
 
 
 def initialize():
-    return [make_polygon(3) for i in range(100)]
+    return [make_polygon(random.randint(3, 6)) for i in range(random.randint(1, 10))]
 
 
 def evaluate(x):
@@ -94,40 +108,58 @@ def select(population):
 
 
 def combine(*parents):
-    return [a if random.random() < 0.5 else b for a, b in zip(*parents)]
+    return parents[0][:49] + parents[1][50:]
 
 
-def mutate(x, rate):
+def mutate(x, vertex_rate, add_rate):
+    if random.random() < add_rate:
+        if random.random() < add_rate and len(x) < 100:
+            x.append(make_polygon(random.randint(3, 6)))
+        elif len(x) > 0:
+            x.pop(random.randint(0, len(x) - 1))
+
     for polygon in x:
-        if random.random() < rate:
-            colour = polygon[0]
-            polygon[0] = (random.randint(colour[0] - 10, colour[0] + 10)
-                          , random.randint(colour[1] - 10, colour[1] + 10)
-                          , random.randint(colour[2] - 10, colour[2] + 10)
-                          , random.randint(colour[3] - 10, colour[3] + 10))
-            for i in range(1, len(polygon)):
-                vertex = polygon[i]
-                polygon[i] = (random.randint(vertex[0] - 10, vertex[0] + 10)
-                              , random.randint(vertex[1] - 10, vertex[1] + 10))
+        if random.random() < vertex_rate:
+            i = random.randint(1, len(polygon) - 1)
+            vertex = polygon[i]
+            polygon[i] = (random_int(0, 200, vertex[0] - 10, vertex[0] + 10)
+                          , random_int(0, 200, vertex[1] - 10, vertex[1] + 10))
 
             order_vertices(polygon)
+
+    for polygon in x:
+        if random.random() < vertex_rate:
+            colour = polygon[0]
+            polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10)
+                          , random_int(0, 255, colour[1] - 10, colour[1] + 10)
+                          , random_int(0, 255, colour[2] - 10, colour[2] + 10)
+                          , random.randint(colour[3] - 10, colour[3] + 10))
 
     return x
 
 
-def run(pop_size, maximize, survival_rate, mutation_rate, generations, seed):
+def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, seed, save):
     random.seed(seed)
     population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
     population.evaluate()
 
-    evolution = (Evolution().survive(fraction=float(survival_rate))
+    evolution = (Evolution().survive(n=int(survival_rate))
                  .breed(parent_picker=select, combiner=combine)
-                 .mutate(mutate_function=mutate, rate=float(mutation_rate))
+                 .mutate(mutate_function=mutate,  vertex_rate=float(vertex_rate), add_rate=float(add_rate))
                  .evaluate())
 
     for i in range(int(generations)):
         population = population.evolve(evolution)
         print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness)
+
+    mean = calc_mean(population.individuals)
+
+    if save:
+        image = draw(population.current_best.chromosome)
+        image.save("images/solution.png")
+
+        save_test("basic", population.current_best.fitness, population.current_worst.fitness, mean, pop_size
+                  , survival_rate, vertex_rate, add_rate, generations)
 
 
 def read_config(path):
@@ -137,6 +169,24 @@ def read_config(path):
     values = {section: dict(config.items(section)) for section in config.sections()}
 
     return values
+
+
+def calc_mean(population):
+    total = 0
+    for individual in population:
+        total += individual.fitness
+
+    return total/len(population)
+
+
+def save_test(evol_type, current_best, current_worst, mean, pop_size, survival_rate, vertex, add, generations):
+    current_date = date.today().strftime("%d/%m/%y")
+    f = open("test_results.md", 'a')
+    row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n".format(current_date, evol_type, current_best
+                                                                         , current_worst, mean, pop_size, survival_rate
+                                                                         , vertex, add, generations)
+    f.write(row)
+    f.close()
 
 
 if __name__ == "__main__":
