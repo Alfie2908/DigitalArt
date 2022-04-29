@@ -6,6 +6,7 @@ from configparser import ConfigParser
 import math
 import random
 import sys
+import copy
 
 TARGET = Image.open("images/darwin.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
@@ -72,10 +73,17 @@ def random_int(global_min, global_max, local_min, local_max):
     return num
 
 
-def make_polygon(vertices):
-    polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
-    for vertex in range(vertices):
-        polygon.append((random.randint(10, 190), random.randint(10, 190)))
+def make_polygon(vertices, small):
+    if not small:
+        polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
+        for vertex in range(vertices):
+            polygon.append((random.randint(10, 190), random.randint(10, 190)))
+    else:
+        polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
+        center = (random.randint(10, 190), random.randint(10, 190))
+        for vertex in range(vertices):
+            polygon.append((random_int(0, 200, center[0] - 10, center[0] + 10)
+                           , random_int(0, 200, center[1] - 10, center[1] + 10)))
 
     order_vertices(polygon)
 
@@ -92,7 +100,7 @@ def draw(solution):
 
 
 def initialize():
-    return [make_polygon(random.randint(3, 6)) for i in range(random.randint(1, 10))]
+    return [make_polygon(random.randint(3, 6), False) for i in range(random.randint(1, 10))]
 
 
 def evaluate(x):
@@ -108,32 +116,43 @@ def select(population):
 
 
 def combine(*parents):
-    return parents[0][:49] + parents[1][50:]
+    child = []
+    for polygon in parents[0]:
+        if polygon_centre(polygon)[0] <= 100:
+            child.append(copy.deepcopy(polygon))
+    for polygon in parents[1]:
+        if polygon_centre(polygon)[0] > 100 and len(child) < 100:
+            child.append(copy.deepcopy(polygon))
+
+    return child
 
 
-def mutate(x, vertex_rate, add_rate):
-    if random.random() < add_rate:
+def mutate(x, vertex_rate, add_rate, small):
+    mutation_type = random.randint(0, 2)
+    if mutation_type == 0:
         if random.random() < add_rate and len(x) < 100:
-            x.append(make_polygon(random.randint(3, 6)))
+            x.append(make_polygon(random.randint(3, 6), small))
         elif len(x) > 0:
             x.pop(random.randint(0, len(x) - 1))
 
-    for polygon in x:
-        if random.random() < vertex_rate:
-            i = random.randint(1, len(polygon) - 1)
-            vertex = polygon[i]
-            polygon[i] = (random_int(0, 200, vertex[0] - 10, vertex[0] + 10)
-                          , random_int(0, 200, vertex[1] - 10, vertex[1] + 10))
+    elif mutation_type == 1:
+        for polygon in x:
+            if random.random() < vertex_rate:
+                i = random.randint(1, len(polygon) - 1)
+                vertex = polygon[i]
+                polygon[i] = (random_int(0, 200, vertex[0] - 10, vertex[0] + 10)
+                              , random_int(0, 200, vertex[1] - 10, vertex[1] + 10))
 
             order_vertices(polygon)
 
-    for polygon in x:
-        if random.random() < vertex_rate:
-            colour = polygon[0]
-            polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10)
-                          , random_int(0, 255, colour[1] - 10, colour[1] + 10)
-                          , random_int(0, 255, colour[2] - 10, colour[2] + 10)
-                          , random.randint(colour[3] - 10, colour[3] + 10))
+    elif mutation_type == 2:
+        for polygon in x:
+            if random.random() < vertex_rate:
+                colour = polygon[0]
+                polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10)
+                              , random_int(0, 255, colour[1] - 10, colour[1] + 10)
+                              , random_int(0, 255, colour[2] - 10, colour[2] + 10)
+                              , random.randint(colour[3] - 10, colour[3] + 10))
 
     return x
 
@@ -143,14 +162,25 @@ def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, s
     population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
     population.evaluate()
 
-    evolution = (Evolution().survive(n=int(survival_rate))
-                 .breed(parent_picker=select, combiner=combine)
-                 .mutate(mutate_function=mutate,  vertex_rate=float(vertex_rate), add_rate=float(add_rate))
-                 .evaluate())
+    evolution1 = (Evolution().survive(fraction=float(survival_rate))
+                  .breed(parent_picker=select, combiner=combine)
+                  .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate), small=False
+                          , elitist=True)
+                  .evaluate())
 
-    for i in range(int(generations)):
-        population = population.evolve(evolution)
-        print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness)
+    evolution2 = (Evolution().survive(fraction=float(survival_rate))
+                  .breed(parent_picker=select, combiner=combine)
+                  .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate), small=True
+                          , elitist=True)
+                  .evaluate())
+
+    for i in range(1000):
+        population = population.evolve(evolution1)
+        print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness, len(population.current_best.chromosome))
+
+    for i in range(1001, 1500):
+        population = population.evolve(evolution2)
+        print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness,)
 
     mean = calc_mean(population.individuals)
 
