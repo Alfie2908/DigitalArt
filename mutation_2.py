@@ -165,7 +165,6 @@ def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, s
     population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
     population.evaluate()
     mean = []
-    gen = []
 
     evolution1 = (Evolution().survive(fraction=float(survival_rate))
                   .breed(parent_picker=select, combiner=combine)
@@ -183,19 +182,16 @@ def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, s
 
         image = draw(population.current_best.chromosome)
         image.save("images/solution.png")
-        gen.append(i + 1)
-        mean.append(calc_mean(population.individuals))
+        gen = (i + 1)
+        mean.append
 
-    plt.plot(gen, mean)
-    plt.ylabel("Mean Fitness")
-    plt.xlabel("Generation")
-    plt.show()
+
 
     if save:
         image = draw(population.current_best.chromosome)
         image.save("images/solution.png")
-        final_mean = calc_mean(population.individuals)
-        save_test("basic", population.current_best.fitness, population.current_worst.fitness, final_mean, pop_size
+        mean = calc_mean(population.individuals)
+        save_test("basic", population.current_best.fitness, population.current_worst.fitness, mean, pop_size
                   , survival_rate, vertex_rate, add_rate, generations)
 
 

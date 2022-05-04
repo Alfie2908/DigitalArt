@@ -1,14 +1,16 @@
 from datetime import date
-
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
 from configparser import ConfigParser
 import math
+import numpy
 import random
 import sys
+import copy
 
-TARGET = Image.open("images/darwin.png")
+TARGET = Image.open("images/easy.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
+selected = []
 
 
 def polygon_centre(polygon):
@@ -72,8 +74,21 @@ def random_int(global_min, global_max, local_min, local_max):
     return num
 
 
-def make_polygon(vertices, small):
-    if not small:
+def single_insertion_sort(list):
+    for i in range(1, len(list)):
+        key = list[i].fitness
+        item = list[i]
+        j = i - 1
+
+        while j >= 0 and list[j].fitness > key:
+            list[j + 1] = list[j]
+            j = j - 1
+
+        list[j + 1] = item
+
+
+def make_polygon(vertices):
+    if not random.choice([True, False]):
         polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
         for vertex in range(vertices):
             polygon.append((random.randint(10, 190), random.randint(10, 190)))
@@ -99,7 +114,7 @@ def draw(solution):
 
 
 def initialize():
-    return [make_polygon(random.randint(3, 6), False) for i in range(random.randint(1, 10))]
+    return [make_polygon(random.randint(3, 6)) for i in range(random.randint(1, 10))]
 
 
 def evaluate(x):
@@ -110,35 +125,56 @@ def evaluate(x):
     return (MAX - count) / MAX
 
 
+def rank_selection(population, pop_size, survival_rate):
+    sum = numpy.sum([i.fitness for i in population])
+    prob = [i.fitness/sum for i in population]
+    num_survivors = int(round(pop_size * survival_rate, 0))
+
+    return numpy.random.choice(population, num_survivors, p=prob, replace=False)
+
+
+def filter_population(individual):
+    for i in selected:
+        if individual.fitness == i.fitness:
+            return True
+
+    return False
+
+
 def select(population):
-    return [population[0]]
+    return [random.choice(population) for i in range(2)]
 
 
-def combine(parent):
-    return parent
+def combine(*parents):
+    child = []
+    for polygon in parents[0]:
+        if polygon_centre(polygon)[0] <= 100 and len(child) < 100:
+            child.append(copy.deepcopy(polygon))
+    for polygon in parents[1]:
+        if polygon_centre(polygon)[0] > 100 and len(child) < 100:
+            child.append(copy.deepcopy(polygon))
+
+    return child
 
 
-def mutate(x, vertex_rate, add_rate, small):
-    mutation_type = random.randint(0, 2)
-    if mutation_type == 0:
-        if random.random() < add_rate and len(x) < 100:
-            x.append(make_polygon(random.randint(3, 6), small))
+def mutate(x, vertex_rate, add_rate):
+    if random.random() < add_rate:
+        if random.choice([True, False]) and len(x) < 100:
+            x.append(make_polygon(random.randint(3, 6)))
         elif len(x) > 0:
             x.pop(random.randint(0, len(x) - 1))
 
-    elif mutation_type == 1:
-        for polygon in x:
-            if random.random() < vertex_rate:
+    for polygon in x:
+        if random.random() < vertex_rate:
+            if random.choice([True, False]):
                 i = random.randint(1, len(polygon) - 1)
                 vertex = polygon[i]
                 polygon[i] = (random_int(0, 200, vertex[0] - 10, vertex[0] + 10)
                               , random_int(0, 200, vertex[1] - 10, vertex[1] + 10))
 
-            order_vertices(polygon)
+                order_vertices(polygon)
 
-    elif mutation_type == 2:
-        for polygon in x:
-            if random.random() < vertex_rate:
+            else:
                 colour = polygon[0]
                 polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10)
                               , random_int(0, 255, colour[1] - 10, colour[1] + 10)
@@ -148,21 +184,25 @@ def mutate(x, vertex_rate, add_rate, small):
     return x
 
 
+
 def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, seed, save):
     random.seed(seed)
     population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
     population.evaluate()
+    global selected
 
-    evolution = (Evolution().survive(n=int(survival_rate))
-                 .breed(parent_picker=select, combiner=combine)
-                 .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate), small=False
-                         , elitist=True)
-                 .evaluate())
+    evolution1 = (Evolution().filter(func=filter_population)
+                  .breed(parent_picker=select, combiner=combine)
+                  .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate))
+                  .evaluate())
 
     for i in range(int(generations)):
-        population = population.evolve(evolution)
-        print("i =", i, " best =", population.current_best.fitness, " worst =", population.current_worst.fitness
-              , len(population.current_best.chromosome))
+        selected = rank_selection(population.individuals, int(pop_size), float(survival_rate))
+        population = population.evolve(evolution1)
+        sd = standard_deviation(population.individuals)
+
+        print("Gen =", i, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
+              , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
 
     mean = calc_mean(population.individuals)
 
@@ -189,6 +229,11 @@ def calc_mean(population):
         total += individual.fitness
 
     return total/len(population)
+
+
+def standard_deviation(population):
+    fitness_list = [i.fitness for i in population]
+    return numpy.std(fitness_list)
 
 
 def save_test(evol_type, current_best, current_worst, mean, pop_size, survival_rate, vertex, add, generations):
