@@ -1,4 +1,3 @@
-from datetime import date
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
 from configparser import ConfigParser
@@ -9,7 +8,7 @@ import random
 import sys
 import copy
 
-TARGET = Image.open("images/easy.png")
+TARGET = Image.open("images/hard.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
 
 
@@ -74,11 +73,8 @@ def random_int(global_min, global_max, local_min, local_max):
     return num
 
 
-def make_polygon(vertices, prob_small, colour):
-    if colour:
-        polygon = [colour]
-    else:
-        polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
+def make_polygon(vertices, prob_small):
+    polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
 
     if not random.random() < prob_small:
         for vertex in range(vertices):
@@ -104,7 +100,7 @@ def draw(solution):
 
 
 def initialize():
-    return [make_polygon(random.randint(3, 6), 0.5, None) for i in range(random.randint(1, 10))]
+    return [make_polygon(random.randint(3, 6), 0.5) for i in range(random.randint(1, 10))]
 
 
 def evaluate(x):
@@ -134,8 +130,7 @@ def combine(*parents):
 def mutate(x, vertex_rate, add_rate, prob_small):
     if random.random() < add_rate:
         if random.choice([True, False]) and len(x) < 100:
-            polygon_colour = random.choice(x)[0]
-            x.append(make_polygon(random.randint(3, 6), prob_small, polygon_colour))
+            x.append(make_polygon(random.randint(3, 6), prob_small))
         elif len(x) > 0:
             x.pop(random.randint(0, len(x) - 1))
 
@@ -160,39 +155,46 @@ def mutate(x, vertex_rate, add_rate, prob_small):
 
 
 
-def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, seed, save):
-    random.seed(seed)
-    population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
-    population.evaluate()
-    mean = []
+def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, seed, save):
+    fitness_evaluations = []
+    for j in range(5):
+        random.seed(int(seed) + j)
+        population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
+        population.evaluate()
+        count = 1
+        mean = []
+        gen = []
 
-    evolution1 = (Evolution().survive(fraction=float(survival_rate))
-                  .breed(parent_picker=select, combiner=combine)
-                  .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate)
-                          , prob_small=0.75, elitist=True)
-                  .evaluate())
+        evolution1 = (Evolution().survive(fraction=float(survival_rate))
+                      .breed(parent_picker=select, combiner=combine)
+                      .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate)
+                              , prob_small=0.8, elitist=True)
+                      .evaluate())
 
+        while population.current_best.fitness < 0.95 and count < 5000:
+            population = population.evolve(evolution1)
+            sd = standard_deviation(population.individuals)
 
-    for i in range(int(generations)):
-        population = population.evolve(evolution1)
-        sd = standard_deviation(population.individuals)
+            print("Gen =", count, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
+                  , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
 
-        print("Gen =", i, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
-              , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
+            gen.append(count)
+            mean.append(calc_mean(population.individuals))
+            count += 1
+
+        fitness_evaluations.append(count)
 
         image = draw(population.current_best.chromosome)
-        image.save("images/solution.png")
-        gen = (i + 1)
-        mean.append
-
-
+        image.save("images/solution" + str(j + 1) + ".png")
+        line_colour = ['b', 'g', 'r', 'c', 'm']
+        plt.plot(gen, mean, line_colour[j])
 
     if save:
-        image = draw(population.current_best.chromosome)
-        image.save("images/solution.png")
-        mean = calc_mean(population.individuals)
-        save_test("basic", population.current_best.fitness, population.current_worst.fitness, mean, pop_size
-                  , survival_rate, vertex_rate, add_rate, generations)
+        save_test(fitness_evaluations, pop_size, float(survival_rate), float(vertex_rate), float(add_rate))
+
+    plt.ylabel("Mean Fitness")
+    plt.xlabel("Generation")
+    plt.show()
 
 
 def read_config(path):
@@ -217,12 +219,20 @@ def standard_deviation(population):
     return numpy.std(fitness_list)
 
 
-def save_test(evol_type, current_best, current_worst, mean, pop_size, survival_rate, vertex, add, generations):
-    current_date = date.today().strftime("%d/%m/%y")
-    f = open("test_results.md", 'a')
-    row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n".format(current_date, evol_type, current_best
-                                                                         , current_worst, mean, pop_size, survival_rate
-                                                                         , vertex, add, generations)
+def save_test(generations, pop, survival, vertex, add):
+    minimum = 100000
+    maximum = -100000
+    total = 0
+    for i in generations:
+        if i < minimum: minimum = i
+        if i > maximum: maximum = i
+        total += i
+
+    mean = total / len(generations)
+
+    f = open("tests.md", 'a')
+    row = "| Reference | {} | {} | {} | {} | {} | {} | {} |\n".format(minimum, maximum, mean
+                                                                      , pop, survival, vertex, add)
     f.write(row)
     f.close()
 
