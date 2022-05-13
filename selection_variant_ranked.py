@@ -1,14 +1,14 @@
-from datetime import date
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
 from configparser import ConfigParser
+import matplotlib.pyplot as plt
 import math
 import numpy
 import random
 import sys
 import copy
 
-TARGET = Image.open("images/easy.png")
+TARGET = Image.open("images/hard.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
 selected = []
 
@@ -125,9 +125,10 @@ def evaluate(x):
     return (MAX - count) / MAX
 
 
-def rank_selection(population, pop_size, survival_rate):
-    sum = numpy.sum([i.fitness for i in population])
-    prob = [i.fitness/sum for i in population]
+def ranked_selection(population, pop_size, survival_rate):
+    single_insertion_sort(population)
+    rank_sum = (1 + len(population)) * (len(population) / 2)
+    prob = [(i + 1) / rank_sum for i in range(len(population))]
     num_survivors = int(round(pop_size * survival_rate, 0))
 
     return numpy.random.choice(population, num_survivors, p=prob, replace=False)
@@ -185,33 +186,46 @@ def mutate(x, vertex_rate, add_rate):
 
 
 
-def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, generations, seed, save):
-    random.seed(seed)
-    population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
-    population.evaluate()
-    global selected
+def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, seed, save):
+    fitness_evaluations = []
+    for j in range(5):
+        random.seed(int(seed) + j)
+        population = Population.generate(initialize, evaluate, size=int(pop_size), maximize=bool(maximize))
+        population.evaluate()
+        count = 1
+        mean = []
+        gen = []
 
-    evolution1 = (Evolution().filter(func=filter_population)
-                  .breed(parent_picker=select, combiner=combine)
-                  .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate))
-                  .evaluate())
+        evolution1 = (Evolution().survive(fraction=float(survival_rate))
+                      .breed(parent_picker=select, combiner=combine)
+                      .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate)
+                              , elitist=True)
+                      .evaluate())
 
-    for i in range(int(generations)):
-        selected = rank_selection(population.individuals, int(pop_size), float(survival_rate))
-        population = population.evolve(evolution1)
-        sd = standard_deviation(population.individuals)
+        while population.current_best.fitness < 0.95:
+            population = population.evolve(evolution1)
+            sd = standard_deviation(population.individuals)
 
-        print("Gen =", i, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
-              , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
+            print("Gen =", count, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
+                  , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
 
-    mean = calc_mean(population.individuals)
+            gen.append(count)
+            mean.append(calc_mean(population.individuals))
+            count += 1
+
+        fitness_evaluations.append(count)
+
+        image = draw(population.current_best.chromosome)
+        image.save("images/solution" + str(j + 1) + ".png")
+        line_colour = ['b', 'g', 'r', 'c', 'm']
+        plt.plot(gen, mean, line_colour[j])
 
     if save:
-        image = draw(population.current_best.chromosome)
-        image.save("images/solution.png")
+        save_test(fitness_evaluations, pop_size, float(survival_rate), float(vertex_rate), float(add_rate))
 
-        save_test("basic", population.current_best.fitness, population.current_worst.fitness, mean, pop_size
-                  , survival_rate, vertex_rate, add_rate, generations)
+    plt.ylabel("Mean Fitness")
+    plt.xlabel("Generation")
+    plt.show()
 
 
 def read_config(path):
@@ -236,12 +250,20 @@ def standard_deviation(population):
     return numpy.std(fitness_list)
 
 
-def save_test(evol_type, current_best, current_worst, mean, pop_size, survival_rate, vertex, add, generations):
-    current_date = date.today().strftime("%d/%m/%y")
-    f = open("test_results.md", 'a')
-    row = "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} |\n".format(current_date, evol_type, current_best
-                                                                         , current_worst, mean, pop_size, survival_rate
-                                                                         , vertex, add, generations)
+def save_test(generations, pop, survival, vertex, add):
+    minimum = 100000
+    maximum = -100000
+    total = 0
+    for i in generations:
+        if i < minimum: minimum = i
+        if i > maximum: maximum = i
+        total += i
+
+    mean = total / len(generations)
+
+    f = open("tests.md", 'a')
+    row = "| Ranked | {} | {} | {} | {} | {} | {} | {} |\n".format(minimum, maximum, mean
+                                                                      , pop, survival, vertex, add)
     f.write(row)
     f.close()
 
