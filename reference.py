@@ -1,3 +1,11 @@
+"""
+This is the reference algorithm other variants are built upon.
+
+# @Create Date: 13/05/2022
+# @Author  : Alfie Fields
+# @File    : reference.py
+
+"""
 from PIL import Image, ImageDraw, ImageChops
 from evol import Population, Evolution
 from configparser import ConfigParser
@@ -8,11 +16,12 @@ import random
 import sys
 import copy
 
-TARGET = Image.open("images/hard.png")
+TARGET = Image.open("images/darwin.png")
 MAX = 255 * TARGET.size[0] * TARGET.size[1]
 
 
 def polygon_centre(polygon):
+    """ Find centre of a polygon. """
     sum_x = 0
     sum_y = 0
     count = 0
@@ -22,10 +31,11 @@ def polygon_centre(polygon):
         sum_y += vertex[1]
         count += 1
 
-    return sum_x/count, sum_y/count
+    return sum_x / count, sum_y / count
 
 
 def get_angle(point1, point2):
+    """ Get angle in radians of vertex from y-axis origin of polygon centre. """
     if point1[1] == point2[1] and point2[0] > point1[0]:
         return 0.5 * math.pi
     elif point1[1] == point2[1] and point2[0] < point1[0]:
@@ -42,6 +52,7 @@ def get_angle(point1, point2):
 
 
 def dual_insertion_sort(list1, list2):
+    """ Sort increasing angles, along with vertices. """
     for i in range(1, len(list1)):
         key = list1[i]
         item = list2[i + 1]
@@ -57,6 +68,7 @@ def dual_insertion_sort(list1, list2):
 
 
 def order_vertices(polygon):
+    """ Remove self-intersection by organising vertices. """
     centre = polygon_centre(polygon)
     angles = []
     for i in range(1, len(polygon)):
@@ -66,6 +78,7 @@ def order_vertices(polygon):
 
 
 def random_int(global_min, global_max, local_min, local_max):
+    """ Create a random number within local and global range. """
     num = -1000000
     while num < global_min or num > global_max:
         num = random.randint(local_min, local_max)
@@ -74,6 +87,7 @@ def random_int(global_min, global_max, local_min, local_max):
 
 
 def make_polygon(vertices, prob_small):
+    """ Create one polygon to add to an individual. """
     polygon = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255), random.randint(30, 60))]
 
     if not random.random() < prob_small:
@@ -82,8 +96,8 @@ def make_polygon(vertices, prob_small):
     else:
         center = (random.randint(10, 190), random.randint(10, 190))
         for vertex in range(vertices):
-            polygon.append((random_int(0, 200, center[0] - 5, center[0] + 5)
-                           , random_int(0, 200, center[1] - 5, center[1] + 5)))
+            polygon.append((random_int(0, 200, center[0] - 5, center[0] + 5),
+                            random_int(0, 200, center[1] - 5, center[1] + 5)))
 
     order_vertices(polygon)
 
@@ -91,6 +105,7 @@ def make_polygon(vertices, prob_small):
 
 
 def draw(solution):
+    """ Draw an individual on a canvas. """
     image = Image.new("RGB", (200, 200))
     canvas = ImageDraw.Draw(image, "RGBA")
     for polygon in solution:
@@ -100,10 +115,12 @@ def draw(solution):
 
 
 def initialize():
+    """ Create initial population. """
     return [make_polygon(random.randint(3, 6), 0.5) for i in range(random.randint(1, 10))]
 
 
 def evaluate(x):
+    """ Calculate the fitness of an individual. """
     image = draw(x)
     diff = ImageChops.difference(image, TARGET)
     hist = diff.convert("L").histogram()
@@ -112,10 +129,12 @@ def evaluate(x):
 
 
 def select(population):
+    """ Select parents for crossover. """
     return [random.choice(population) for i in range(2)]
 
 
 def combine(*parents):
+    """ Generate offspring from parents, by combining left and right. """
     child = []
     for polygon in parents[0]:
         if polygon_centre(polygon)[0] <= 100 and len(child) < 100:
@@ -128,6 +147,7 @@ def combine(*parents):
 
 
 def mutate(x, vertex_rate, add_rate, prob_small):
+    """ Mutate offsprings genome. """
     if random.random() < add_rate:
         if random.choice([True, False]) and len(x) < 100:
             x.append(make_polygon(random.randint(3, 6), prob_small))
@@ -146,16 +166,16 @@ def mutate(x, vertex_rate, add_rate, prob_small):
 
             else:
                 colour = polygon[0]
-                polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10)
-                              , random_int(0, 255, colour[1] - 10, colour[1] + 10)
-                              , random_int(0, 255, colour[2] - 10, colour[2] + 10)
-                              , random.randint(colour[3] - 10, colour[3] + 10))
+                polygon[0] = (random_int(0, 255, colour[0] - 10, colour[0] + 10),
+                              random_int(0, 255, colour[1] - 10, colour[1] + 10),
+                              random_int(0, 255, colour[2] - 10, colour[2] + 10),
+                              random.randint(colour[3] - 10, colour[3] + 10))
 
     return x
 
 
-
 def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, seed, save):
+    """ Run evolution and perform analysis. """
     fitness_evaluations = []
     for j in range(5):
         random.seed(int(seed) + j)
@@ -165,18 +185,19 @@ def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, seed, save):
         mean = []
         gen = []
 
-        evolution1 = (Evolution().survive(fraction=float(survival_rate))
-                      .breed(parent_picker=select, combiner=combine)
-                      .mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate)
-                              , prob_small=0.8, elitist=True)
-                      .evaluate())
+        evolution1 = (Evolution().survive(fraction=float(survival_rate)).
+                      breed(parent_picker=select, combiner=combine).
+                      mutate(mutate_function=mutate, vertex_rate=float(vertex_rate), add_rate=float(add_rate),
+                             prob_small=0.8, elitist=True).
+                      evaluate())
 
-        while population.current_best.fitness < 0.95 and count < 5000:
+        while population.current_best.fitness < 0.95 and count < 6000:
             population = population.evolve(evolution1)
             sd = standard_deviation(population.individuals)
 
-            print("Gen =", count, " Best =", population.current_best.fitness, " Worst =", population.current_worst.fitness
-                  , "Polygons =", len(population.current_best.chromosome), "Standard Deviation =", sd)
+            print("Gen =", count, " Best =", population.current_best.fitness, " Worst =",
+                  population.current_worst.fitness, "Polygons =", len(population.current_best.chromosome),
+                  "Standard Deviation =", sd)
 
             gen.append(count)
             mean.append(calc_mean(population.individuals))
@@ -198,6 +219,7 @@ def run(pop_size, maximize, survival_rate, vertex_rate, add_rate, seed, save):
 
 
 def read_config(path):
+    """ Read values from config file. """
     config = ConfigParser()
     config.read(path)
 
@@ -207,32 +229,37 @@ def read_config(path):
 
 
 def calc_mean(population):
+    """ Calculate the mean fitness of given population. """
     total = 0
     for individual in population:
         total += individual.fitness
 
-    return total/len(population)
+    return total / len(population)
 
 
 def standard_deviation(population):
+    """ Calculate standard deviation of given population. """
     fitness_list = [i.fitness for i in population]
     return numpy.std(fitness_list)
 
 
 def save_test(generations, pop, survival, vertex, add):
+    """ Analise generations and save to markdown. """
     minimum = 100000
     maximum = -100000
     total = 0
     for i in generations:
-        if i < minimum: minimum = i
-        if i > maximum: maximum = i
+        if i < minimum:
+            minimum = i
+        if i > maximum:
+            maximum = i
         total += i
 
     mean = total / len(generations)
 
     f = open("tests.md", 'a')
-    row = "| Reference | {} | {} | {} | {} | {} | {} | {} |\n".format(minimum, maximum, mean
-                                                                      , pop, survival, vertex, add)
+    row = "| Reference | {} | {} | {} | {} | {} | {} | {} |\n".format(minimum, maximum, mean, pop, survival, vertex,
+                                                                      add)
     f.write(row)
     f.close()
 
