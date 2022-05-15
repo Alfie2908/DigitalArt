@@ -15,7 +15,7 @@ generations on Charles Darwin, but this can be changed in the source code.
 
 To run the variants enter this command in the terminal:
 
-~~~python
+~~~terminal
  python3 (name of algorithm).py config.ini (config header)
 ~~~
 
